@@ -1,8 +1,8 @@
 # CryptoSpeed Telegram bot
 
-Honest, non-custodial help for getting crypto transfers confirmed faster: live fee data, plain-language tips, stuck-tx guides and fee-drop alerts.
+Honest, non-custodial help for getting crypto transfers confirmed faster: live fee data, plain-language tips, stuck-tx guides, fee-drop alerts — and read-only swap-quote comparisons across free DEX aggregators. Also runs as a local terminal app without Telegram (`--cli`).
 
-**No custody.** The bot never holds, receives or sends funds and never asks for private keys or seed phrases. It only reads public data.
+**No custody.** The bot never holds, receives or sends funds and never asks for private keys or seed phrases. It only reads public data. Swap quotes are read-only comparisons: it never executes swaps, never builds or signs transactions, and never asks for keys or wallet connections.
 
 ## Commands
 | Command | What it does |
@@ -15,7 +15,9 @@ Honest, non-custodial help for getting crypto transfers confirmed faster: live f
 | `/price <coin>` | USD price + 24h change (CoinGecko, with Coinbase spot price as fallback) |
 | `/alert btc <sat_per_vb>` | Message this chat when the BTC next-block fee is ≤ the threshold |
 | `/alert eth <gwei>` | Message this chat when ETH base fee + typical tip is ≤ the threshold |
-| `/alerts` / `/unalert` | List / clear this chat's alerts |
+| `/swap <amount> <from> <to> [chain]` | Compare live swap quotes across keyless aggregators (read-only), e.g. `/swap 1 eth usdc`, `/swap 500 usdc sol` |
+| `/swapalert <from> <to> <target> [chain]` | Message this chat when 1 FROM quotes ≥ target TO, e.g. `/swapalert eth usdc 4000` |
+| `/alerts` / `/unalert` | List / clear this chat's alerts (fee alerts and swap-rate alerts) |
 | `/addwallet <address> [label]` | Watch **your own** BTC (bc1…/1…/3…) or ETH (0x…) public address for incoming transfers. Max 10 per chat |
 | `/wallets` | List watched addresses, labels and last known balance |
 | `/removewallet <id\|label\|address>` | Stop watching an address |
@@ -28,7 +30,33 @@ You can send plain messages too. In private chats the bot answers everything. In
 - “my tx is stuck”, “speed up my btc transaction”, “transfer taking forever”
 - a pasted BTC txid (64 hex) or ETH tx hash (0x + 64 hex): live status via mempool.space or ETH RPC (`eth_getTransactionReceipt` + `eth_blockNumber`), giving confirmations, or for pending txs the fee rate vs. current fees plus unstick tips
 - “tell me when eth gas under 1”, “alert me if btc fees drop below 3”, “show my alerts”, “clear my alerts”
+- “swap 1 eth to usdc”, “best rate for 500 usdc to sol”, “convert 2.5 eth into dai”, “how much usdc for 1 eth”, “swap 0.5 eth for usdc on base”, “alert me when eth/usdc hits 4000”
 - hi / thanks / help; seed-phrase or custody questions get a safety warning; anything else gets a list of example questions
+
+### Swap quotes (read-only, v0.2.0)
+`/swap 1 eth usdc` (or just “swap 1 eth to usdc”) fetches live quotes **in parallel** from every free, keyless aggregator for that chain, compares them, and shows:
+- 🏆 the best rate and expected output, with the other quotes listed below it,
+- price impact per quote (computed from the aggregator's own USD valuations, or reported directly), with a ⚠️ slippage warning when impact exceeds 1%,
+- estimated gas cost in USD and **net output after gas** where the API reports it,
+- on Ethereum, a ⛽ gas-aware hint: the current base fee is ranked against the last ~2 hours of blocks (`eth_feeHistory`, 600 blocks) to say honestly whether now is a cheap time to swap,
+- a clear disclaimer: quotes are live estimates, not predictions or financial advice — the bot can't predict prices.
+
+Supported pairs — Ethereum: ETH, WETH, WBTC, USDC, USDT, DAI, LINK, UNI; Base: ETH, WETH, USDC; Arbitrum: ETH, WETH, USDC, USDT, ARB; Solana: SOL, USDC, USDT, JUP, BONK, WIF. The chain is inferred from the pair (e.g. SOL pairs go to Solana) or given explicitly (`/swap 1 eth usdc base`, “on arbitrum”). “btc” on an EVM chain means wrapped BTC (WBTC), and the bot says so.
+
+**Quote sources (all free, no API key — verified):**
+- EVM: ParaSwap `/prices`, KyberSwap aggregator `/routes`, CoW Protocol `/quote` (native ETH sells are quoted via WETH; CoW's fee is already included in its quote), Li.Fi `/quote`.
+- Solana: Jupiter lite-api (`swap/v1/quote`, falling back to `ultra/v1/order` when the quote service is down), Raydium trade API (`compute/swap-base-in`).
+- Not usable keyless, therefore not queried: **0x** (requires an API key) and **Odos** (public endpoint unreachable).
+
+If a source fails it's listed as “no answer from: …”; if **all** sources fail you get a friendly try-again message. The bot never invents numbers.
+
+**Pair price alerts:** `/swapalert eth usdc 4000` (or “alert me when eth/usdc hits 4000”) stores the alert in the same sqlite file and polls the aggregators every `SWAP_POLL_SECONDS` (default 300). When the best quote for 1 FROM reaches the target, the chat is notified once and the alert is removed. Max 10 per chat; `/alerts` lists them, `/unalert` clears them.
+
+### Terminal mode (no Telegram, v0.2.0)
+```bash
+.venv/bin/python -m cryptospeed --cli          # optional: --db /path/alerts.db
+```
+Opens an interactive REPL that accepts exactly the same plain-English messages and slash commands as the Telegram bot and prints replies as plain text (HTML stripped). Fee alerts, swap-rate alerts and wallet watches poll in the background and print into the session while it's open. `exit`, `quit` or Ctrl-D quits. No token or network setup is needed beyond internet access to the public APIs.
 
 ### Own-wallet watching (public addresses only)
 The bot watches only public addresses that **you** add, either with `/addwallet` or by saying “watch my wallet <address> as savings”, “track this address <address>”, “list my wallets” or “stop watching savings”. It never asks for, stores or uses private keys or seed phrases; anything shaped like a WIF key or xprv gets a safety warning instead. It can't move funds and never looks up other people's wallets.
@@ -46,6 +74,7 @@ Alerts are stored in a small sqlite file (`alerts.db`). They're checked every `A
 - Bitcoin fees: `https://mempool.space/api/v1/fees/recommended`
 - Ethereum gas: `eth_feeHistory` (last 10 blocks, 25th/50th percentile tips) on public RPCs, tried in this order: `ethereum-rpc.publicnode.com`, `eth.drpc.org`, `rpc.flashbots.net`, `rpc.mevblocker.io`. `eth_maxPriorityFeePerGas` isn't used because several public RPCs return 0 for it.
 - Prices: CoinGecko `simple/price` (cached for 60 s because the free tier rate-limits), with Coinbase `v2/prices/<SYM>-USD/spot` as the fallback.
+- Swap quotes: ParaSwap, KyberSwap, CoW Protocol and Li.Fi (EVM); Jupiter and Raydium (Solana) — see the swap section above for endpoints and the keyless-access notes.
 
 If a source fails, the user gets a friendly "try again" message. The bot never makes up numbers.
 
@@ -70,22 +99,26 @@ If a source fails, the user gets a friendly "try again" message. The bot never m
 # Live check of every data fetcher against the real APIs (no Telegram token needed):
 .venv/bin/python -m cryptospeed --selftest
 
-# Offline unit tests (formatting, alert parsing/store, fetcher fallbacks, handlers, alert job):
+# Offline unit tests (formatting, parser, store, fetcher fallbacks, handlers, alert jobs,
+# swap-quote comparison with mocked APIs, CLI dispatch + REPL loop):
 .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python -m pytest -q
 ```
+The selftest also queries each swap source individually (ParaSwap, KyberSwap, CoW, Li.Fi, Jupiter, Raydium) and prints a compared live ETH→USDC and SOL→USDC quote.
 
 ## Layout
 ```
 cryptospeed/
-  __main__.py   entry point (run bot / --selftest)
-  bot.py        Telegram handlers, alert polling job
+  __main__.py   entry point (run bot / --selftest / --cli)
+  bot.py        Telegram handlers, alert + swap-alert + wallet polling jobs, shared flows
+  cli.py        terminal mode: slash-command dispatch + plain-English REPL (HTML stripped)
   fetchers.py   live API calls (mempool.space, ETH RPCs, CoinGecko, Coinbase)
+  swaps.py      read-only swap quotes from keyless aggregators (never executes swaps)
   formatting.py all user-facing text (pure functions)
   nlu.py        rule-based natural-language intent parser
   addresses.py  BTC/ETH public-address validation, private-key shape detection
   wallets.py    own-wallet snapshots (mempool.space, ETH RPC, Blockscout) and incoming-tx diff
-  store.py      sqlite alert store
+  store.py      sqlite store (fee alerts, swap-rate alerts, watched wallets)
   selftest.py   live self-test
-tests/test_formatting.py, tests/test_nlu.py, tests/test_wallets.py
+tests/test_formatting.py, tests/test_nlu.py, tests/test_wallets.py, tests/test_swaps.py, tests/test_cli.py
 ```
