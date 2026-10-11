@@ -50,10 +50,13 @@ HELP_TEXT = (
     "/price &lt;coin&gt; — current USD price\n"
     "/alert btc &lt;sat_per_vb&gt; — ping me when BTC next-block fee ≤ value\n"
     "/alert eth &lt;gwei&gt; — ping me when ETH suggested gas ≤ value\n"
+    "/swap &lt;amount&gt; &lt;from&gt; &lt;to&gt; [chain] — compare live swap quotes (read-only, e.g. /swap 1 eth usdc)\n"
+    "/swapalert &lt;from&gt; &lt;to&gt; &lt;target&gt; [chain] — ping me when 1 FROM quotes ≥ target TO\n"
     "/alerts — list your alerts · /unalert — clear them\n"
     "/addwallet &lt;address&gt; [label] — watch YOUR OWN BTC/ETH address for incoming transfers\n"
     "/wallets — list watched addresses · /removewallet &lt;id|label|address&gt;\n\n"
     + SAFETY_LINE + "\n👀 Wallet watching only covers public addresses you add yourself. I never search for other people's wallets."
+    "\n🔄 Swap quotes are read-only comparisons from public aggregator APIs — I never execute swaps or connect to wallets."
 )
 
 
@@ -227,6 +230,7 @@ EXAMPLES = (
     "• “btc fees” or “how much to send bitcoin?”\n"
     "• “gas price” / “eth fees”\n"
     "• “price of sol and doge”\n"
+    "• “swap 1 eth to usdc” / “best rate for 500 usdc to sol”\n"
     "• “how do I send eth faster?”\n"
     "• “my transaction is stuck”, or paste a BTC txid / ETH tx hash\n"
     "• “tell me when eth gas is under 1”\n"
@@ -382,6 +386,141 @@ def format_wallets(wallets: list) -> str:
         lines.append(f"• #{w.id} {w.chain.upper()} {_wname(w.label, w.address)} — {format_balance(w.chain, w.balance, w.pending)}")
     lines.append("Remove with /removewallet &lt;id|label|address&gt;.")
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------- swap quotes (read-only)
+from .swaps import SwapQuote, CHAINS as SWAP_CHAINS  # noqa: E402
+
+SWAP_DISCLAIMER = ("ℹ️ Live quotes from public aggregator APIs — estimates, not predictions or financial advice; "
+                   "I can't predict prices. Rates change block to block, so re-check in your own wallet before swapping. "
+                   "I never execute swaps and never ask for keys or wallet connections.")
+
+
+def _swap_num(x: float) -> str:
+    """Token amounts: sensible precision for both ETH-sized and micro-cap-sized numbers."""
+    if x == 0:
+        return "0"
+    if abs(x) >= 1000:
+        return f"{x:,.2f}".rstrip("0").rstrip(".")
+    if abs(x) >= 1:
+        return f"{x:,.4f}".rstrip("0").rstrip(".")
+    import math
+    dec = min(12, -math.floor(math.log10(abs(x))) + 4)
+    return f"{x:.{dec}f}".rstrip("0").rstrip(".")
+
+
+def parse_swap_args(args: list[str]) -> tuple[float, str, str, Optional[str]]:
+    """/swap <amount> <from> <to> [chain] -> (amount, from, to, chain). Raises ValueError (user-facing)."""
+    usage = ("Usage: /swap &lt;amount&gt; &lt;from&gt; &lt;to&gt; [chain] — e.g. /swap 1 eth usdc, "
+             "/swap 500 usdc sol, /swap 0.5 eth usdc base")
+    a = [x for x in args if x.lower().strip() not in ("to", "for", "into", "->", "→", "on")]
+    if len(a) not in (3, 4):
+        raise ValueError(usage)
+    try:
+        amount = float(a[0].replace(",", "."))
+    except ValueError:
+        raise ValueError(usage) from None
+    if not (0 < amount < 1e15):
+        raise ValueError("Amount must be a positive number.\n" + usage)
+    return amount, a[1], a[2], (a[3] if len(a) == 4 else None)
+
+
+def parse_swapalert_args(args: list[str]) -> tuple[str, str, float, Optional[str]]:
+    """/swapalert <from> <to> <target> [chain] -> (from, to, target_rate, chain)."""
+    usage = ("Usage: /swapalert &lt;from&gt; &lt;to&gt; &lt;target&gt; [chain] — e.g. /swapalert eth usdc 4000 "
+             "(ping me when 1 ETH quotes ≥ 4000 USDC)")
+    a = [x for x in args if x.lower().strip() not in ("to", "for", "into", "->", "→", "on", "at")]
+    if len(a) not in (3, 4):
+        raise ValueError(usage)
+    try:
+        target = float(a[2].replace(",", "."))
+    except ValueError:
+        raise ValueError(usage) from None
+    if not (0 < target < 1e15):
+        raise ValueError("Target must be a positive number.\n" + usage)
+    return a[0], a[1], target, (a[3] if len(a) == 4 else None)
+
+
+def gas_hint(base_fee_gwei: float, history_gwei: list[float]) -> str:
+    """Honest, data-based hint: where the current base fee sits within the recent history."""
+    if not history_gwei:
+        return ""
+    hours = len(history_gwei) * 12 / 3600
+    cheaper_than = 100 * sum(1 for h in history_gwei if h >= base_fee_gwei) / len(history_gwei)
+    where = (f"lower than {cheaper_than:.0f}%" if cheaper_than >= 50
+             else f"higher than {100 - cheaper_than:.0f}%")
+    if cheaper_than >= 70:
+        verdict = "🟢 a relatively cheap moment to swap"
+    elif cheaper_than >= 40:
+        verdict = "🟡 about average right now"
+    else:
+        verdict = "🔴 pricier than usual — if you can wait, gas may drop"
+    return (f"⛽ Gas check: base fee {_num(base_fee_gwei)} gwei is {where} of the last ~{hours:.1f} h of blocks — {verdict}.")
+
+
+def format_swap_quotes(amount: float, sell, buy, chain_key: str, quotes: list[SwapQuote],
+                       failed: list[str], hint: str = "", notes: Optional[list[str]] = None) -> str:
+    chain_name = SWAP_CHAINS[chain_key].name
+    head = f"🔄 <b>Swap quote</b>: {_swap_num(amount)} {sell.symbol} → {buy.symbol} on {chain_name}"
+    if not quotes:
+        lines = [head, "⚠️ None of the quote sources responded right now ("
+                 + ", ".join(failed) + "). Nothing to show — I never invent numbers. Please try again in a minute."]
+        return "\n".join(lines)
+    best = quotes[0]
+    lines = [head, ""]
+    lines.append(f"🏆 Best: <b>{best.source}</b> — <b>{_swap_num(best.amount_out)} {buy.symbol}</b> "
+                 f"(1 {sell.symbol} ≈ {_swap_num(best.rate)} {buy.symbol})")
+    det = _quote_details(best)
+    if det:
+        lines.append("   " + det)
+    if len(quotes) > 1:
+        lines.append("Other quotes:")
+        for q in quotes[1:]:
+            d = _quote_details(q)
+            lines.append(f"• {q.source}: {_swap_num(q.amount_out)} {buy.symbol}" + (f" · {d}" if d else ""))
+    impacts = [q.price_impact_pct for q in quotes if q.price_impact_pct is not None]
+    if impacts and max(impacts) > 1:
+        lines.append(f"⚠️ Price impact up to ~{max(impacts):.1f}% on this size — a big trade moves the price "
+                     "against you. Consider splitting it, and set a slippage limit in your wallet.")
+    if failed:
+        lines.append(f"<i>(no answer from: {', '.join(failed)})</i>")
+    if notes:
+        for n in notes:
+            lines.append(f"ℹ️ {n}")
+    if hint:
+        lines.append(hint)
+    lines.append(SWAP_DISCLAIMER)
+    return "\n".join(lines)
+
+
+def _quote_details(q: SwapQuote) -> str:
+    parts = []
+    if q.price_impact_pct is not None:
+        parts.append(f"price impact ~{abs(q.price_impact_pct):.2f}%")
+    if q.gas_usd is not None:
+        parts.append(f"est. gas ≈ {_usd(q.gas_usd)}")
+        if q.net_out_usd is not None:
+            parts.append(f"net after gas ≈ {_usd(q.net_out_usd)}")
+    if q.note:
+        parts.append(q.note)
+    return " · ".join(parts)
+
+
+def format_swap_alerts(rows: list[tuple[int, str, str, str, float]]) -> str:
+    """rows: (id, chain, from_sym, to_sym, target)"""
+    if not rows:
+        return ""
+    lines = ["🔄 <b>Your swap-rate alerts</b> (each fires once, then is removed):"]
+    for _id, chain, f, t, target in rows:
+        cname = SWAP_CHAINS[chain].name if chain in SWAP_CHAINS else chain
+        lines.append(f"• #{_id}: 1 {f.upper()} ≥ {_swap_num(target)} {t.upper()} ({cname})")
+    return "\n".join(lines)
+
+
+def format_swap_alert_fired(from_sym: str, to_sym: str, target: float, q: SwapQuote) -> str:
+    return (f"🔔 Swap-rate alert: 1 {from_sym.upper()} now quotes <b>{_swap_num(q.rate)} {to_sym.upper()}</b> "
+            f"via {q.source} (your target: ≥ {_swap_num(target)}).\n"
+            f"Re-check with /swap 1 {from_sym} {to_sym} — rates move fast. " + SWAP_DISCLAIMER)
 
 
 def format_incoming(ev, label: Optional[str], balance: Optional[int], pending: Optional[int],

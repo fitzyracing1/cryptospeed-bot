@@ -1,4 +1,5 @@
-"""Entry point: `python -m cryptospeed` runs the bot; `python -m cryptospeed --selftest` checks live APIs."""
+"""Entry point: `python -m cryptospeed` runs the bot; `python -m cryptospeed --selftest` checks live APIs;
+`python -m cryptospeed --cli` opens an interactive terminal session (no Telegram needed)."""
 from __future__ import annotations
 
 import argparse
@@ -11,9 +12,11 @@ import sys
 def main() -> int:
     ap = argparse.ArgumentParser(prog="cryptospeed", description=__doc__)
     ap.add_argument("--selftest", action="store_true", help="hit every live data source and print results (no Telegram token needed)")
+    ap.add_argument("--cli", action="store_true", help="interactive terminal mode: same commands and plain-English chat, no Telegram needed")
     ap.add_argument("--db", default=os.environ.get("ALERTS_DB", "alerts.db"), help="sqlite file for alerts")
     a = ap.parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(level=logging.WARNING if a.cli else logging.INFO,
+                        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     # httpx/telegram log request URLs, which contain the bot token, at INFO. Keep them at WARNING.
     for noisy in ("httpx", "httpcore", "telegram", "telegram.ext", "apscheduler"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
@@ -21,6 +24,9 @@ def main() -> int:
     if a.selftest:
         from .selftest import run
         return asyncio.run(run())
+    if a.cli:
+        from .cli import run_cli
+        return asyncio.run(run_cli(a.db))
 
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token:

@@ -34,10 +34,21 @@ class AlertStore:
             " created_at TEXT DEFAULT CURRENT_TIMESTAMP,"
             " UNIQUE(chat_id, address))"
         )
+        self._db.execute(
+            "CREATE TABLE IF NOT EXISTS swap_alerts ("
+            " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            " chat_id INTEGER NOT NULL,"
+            " chain TEXT NOT NULL,"
+            " from_sym TEXT NOT NULL,"       # token keys as resolved (e.g. 'eth', 'usdc')
+            " to_sym TEXT NOT NULL,"
+            " target REAL NOT NULL,"         # fire when 1 from_sym quotes >= target to_sym
+            " created_at TEXT DEFAULT CURRENT_TIMESTAMP)"
+        )
         self._db.commit()
 
     MAX_PER_CHAT = 10
     MAX_WALLETS_PER_CHAT = 10
+    MAX_SWAP_ALERTS_PER_CHAT = 10
 
     def add(self, chat_id: int, chain: str, threshold: float) -> int:
         with self._lock:
@@ -55,10 +66,12 @@ class AlertStore:
                                     (chat_id,)).fetchall()
 
     def clear_chat(self, chat_id: int) -> int:
+        """Clear every alert in this chat (fee alerts and swap-rate alerts). Returns the total removed."""
         with self._lock:
             cur = self._db.execute("DELETE FROM alerts WHERE chat_id=?", (chat_id,))
+            cur2 = self._db.execute("DELETE FROM swap_alerts WHERE chat_id=?", (chat_id,))
             self._db.commit()
-            return cur.rowcount
+            return cur.rowcount + cur2.rowcount
 
     def all(self) -> list[tuple[int, int, str, float]]:
         with self._lock:
@@ -67,6 +80,35 @@ class AlertStore:
     def delete(self, alert_id: int) -> None:
         with self._lock:
             self._db.execute("DELETE FROM alerts WHERE id=?", (alert_id,))
+            self._db.commit()
+
+    # ------------------------------------------------------------ swap-rate alerts
+    def add_swap_alert(self, chat_id: int, chain: str, from_sym: str, to_sym: str, target: float) -> int:
+        with self._lock:
+            n = self._db.execute("SELECT COUNT(*) FROM swap_alerts WHERE chat_id=?", (chat_id,)).fetchone()[0]
+            if n >= self.MAX_SWAP_ALERTS_PER_CHAT:
+                raise ValueError(f"You already have {n} swap alerts (max {self.MAX_SWAP_ALERTS_PER_CHAT}). "
+                                 "Use /unalert to clear.")
+            cur = self._db.execute(
+                "INSERT INTO swap_alerts (chat_id, chain, from_sym, to_sym, target) VALUES (?,?,?,?,?)",
+                (chat_id, chain, from_sym, to_sym, target))
+            self._db.commit()
+            return cur.lastrowid
+
+    def swap_alerts_for_chat(self, chat_id: int) -> list[tuple[int, str, str, str, float]]:
+        with self._lock:
+            return self._db.execute(
+                "SELECT id, chain, from_sym, to_sym, target FROM swap_alerts WHERE chat_id=? ORDER BY id",
+                (chat_id,)).fetchall()
+
+    def all_swap_alerts(self) -> list[tuple[int, int, str, str, str, float]]:
+        with self._lock:
+            return self._db.execute(
+                "SELECT id, chat_id, chain, from_sym, to_sym, target FROM swap_alerts").fetchall()
+
+    def delete_swap_alert(self, alert_id: int) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM swap_alerts WHERE id=?", (alert_id,))
             self._db.commit()
 
     # ------------------------------------------------------------ watched wallets (public addresses only)

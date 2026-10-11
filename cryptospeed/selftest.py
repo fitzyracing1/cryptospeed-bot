@@ -125,6 +125,44 @@ async def run() -> int:
             return sn
         await check("Wallet watch ETH deposit contract (RPC eth_getBalance + Blockscout history)", eth_snap(), fmt_snap)
 
+        # Swap quotes (read-only): each keyless source individually, then the combined comparison.
+        from . import swaps as S
+        for chain_key, frm, to, amount in (("ethereum", "eth", "usdc", 1.0), ("solana", "sol", "usdc", 1.0)):
+            ck, t_in, t_out, _ = S.resolve_pair(frm, to, chain_key)
+            for name, fn in S.sources_for(ck):
+                try:
+                    q = await fn(c, S.CHAINS[ck], t_in, t_out, amount)
+                    gas = f" gas≈${q.gas_usd:.2f}" if q.gas_usd is not None else ""
+                    imp = f" impact≈{q.price_impact_pct:.3f}%" if q.price_impact_pct is not None else ""
+                    print(f"   swap source {name} ({ck}): OK 1 {t_in.symbol} -> {q.amount_out:.4f} {t_out.symbol}{imp}{gas}")
+                except Exception as e:  # noqa: BLE001
+                    print(f"   swap source {name} ({ck}): FAILED ({type(e).__name__}: {str(e)[:120]})")
+
+        async def swap_compare(chain_key, frm, to):
+            ck, t_in, t_out, notes = S.resolve_pair(frm, to, chain_key)
+            quotes, failed = await S.fetch_quotes(c, ck, t_in, t_out, 1.0)
+            if not quotes:
+                raise F.FetchError(f"no swap source answered for {frm}->{to} on {chain_key} (failed: {', '.join(failed)})")
+            hint = ""
+            if ck == "ethereum":
+                try:
+                    gas = await F.fetch_eth_gas(c, with_usd=False)
+                    hint = T.gas_hint(gas.base_fee_gwei, await F.fetch_eth_base_fee_history(c))
+                except F.FetchError:
+                    pass
+            return (1.0, t_in, t_out, ck, quotes, failed, hint, notes)
+        await check("Swap quote 1 ETH -> USDC (keyless aggregators, compared)", swap_compare("ethereum", "eth", "usdc"),
+                    lambda a: T.format_swap_quotes(*a))
+        await check("Swap quote 1 SOL -> USDC (Jupiter/Raydium)", swap_compare("solana", "sol", "usdc"),
+                    lambda a: T.format_swap_quotes(*a))
+
+        async def gas_history():
+            hist = await F.fetch_eth_base_fee_history(c)
+            gas = await F.fetch_eth_gas(c, with_usd=False)
+            return (gas.base_fee_gwei, hist)
+        await check("ETH base-fee history (gas-aware swap hint)", gas_history(),
+                    lambda a: T.gas_hint(a[0], a[1]) + f"\n({len(a[1])} blocks sampled)")
+
     ok = sum(1 for _, s, _ in results if s)
     print(f"\nSUMMARY: {ok}/{len(results)} live fetchers returned real data")
     for name, s, err in results:
