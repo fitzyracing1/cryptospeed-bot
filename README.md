@@ -1,10 +1,34 @@
-# CryptoSpeed Telegram bot
+# Skill — a free Telegram helper for crypto transfers
 
-Honest, non-custodial help for getting crypto transfers confirmed faster: live fee data, plain-language tips, stuck-tx guides and fee-drop alerts.
+**Skill** answers plain-English questions about crypto fees, prices and stuck transactions, and watches your own wallet addresses for incoming transfers. No keys, no custody, no sign-up.
 
-**No custody.** The bot never holds, receives or sends funds and never asks for private keys or seed phrases. It only reads public data.
+**Try it now: [@Simple1990bot on Telegram](https://t.me/Simple1990bot)** · [Launch announcement on X](https://x.com/fitzyracing1/status/2109341632500019367)
+
+## What can you say to it?
+
+Just type like you'd text a friend — no commands needed:
+
+- *"btc fees"* · *"how much to send bitcoin?"* · *"is the network busy?"*
+- *"price of sol and doge"* · *"whats the prise of etherium"* (typos are fine)
+- *"how do I send eth faster?"* · *"send on arbitrum or base?"*
+- *"my tx is stuck"* · *"transfer taking forever"*
+- **Paste a transaction id** (BTC txid or ETH hash) and get its live status: confirmations, or for pending txs its fee rate vs. current fees plus unstick tips
+- *"tell me when eth gas under 1"* · *"alert me if btc fees drop below 3"*
+- *"watch my wallet bc1q… as savings"* · *"list my wallets"* · *"stop watching savings"*
+
+In private chats the bot answers everything; in groups it answers when @mentioned or when you reply to it. Understanding is a rule-based parser (`cryptospeed/nlu.py`: keywords, regexes, difflib typo correction) — no LLM, no API key, nothing leaves the bot.
+
+## Safety
+
+- **Never holds funds.** The bot cannot receive, hold or send crypto. It only reads public data.
+- **Never asks for keys.** It will never ask for a private key or seed phrase — anything shaped like one gets a safety warning, and seed-phrase/custody questions get the same warning.
+- **Only watches addresses *you* add.** Wallet watching covers public addresses you explicitly register in your chat (max 10). It never scans GitHub, chats or anywhere else for wallets, and never looks up other people's addresses.
+- If it can't fetch live data it says so — it never makes up numbers.
 
 ## Commands
+
+Plain chat covers everything below, but commands work too:
+
 | Command | What it does |
 |---|---|
 | `/start`, `/help` | Intro and command list |
@@ -12,60 +36,57 @@ Honest, non-custodial help for getting crypto transfers confirmed faster: live f
 | `/fees eth` | Live Ethereum next-block base fee + typical/low priority fee (gwei), with the cost of a 21,000-gas transfer in ETH and USD |
 | `/speed <coin>` | Tips for faster confirmation: btc, eth (incl. Arbitrum/Base/Optimism), sol, ltc, plus a generic fallback |
 | `/stuck` | Speeding up a stuck tx: BTC RBF/CPFP, ETH same-nonce replacement, explorer link patterns |
-| `/price <coin>` | USD price + 24h change (CoinGecko, with Coinbase spot price as fallback) |
+| `/price <coin>` | USD price + 24h change (CoinGecko, with Coinbase spot as fallback; unknown coins resolved via CoinGecko search) |
 | `/alert btc <sat_per_vb>` | Message this chat when the BTC next-block fee is ≤ the threshold |
 | `/alert eth <gwei>` | Message this chat when ETH base fee + typical tip is ≤ the threshold |
 | `/alerts` / `/unalert` | List / clear this chat's alerts |
-| `/addwallet <address> [label]` | Watch **your own** BTC (bc1…/1…/3…) or ETH (0x…) public address for incoming transfers. Max 10 per chat |
+| `/addwallet <address> [label]` | Watch **your own** BTC (bc1…/1…/3…) or ETH (0x…) public address for incoming transfers |
 | `/wallets` | List watched addresses, labels and last known balance |
 | `/removewallet <id\|label\|address>` | Stop watching an address |
 
-### Just chat (no commands needed)
-You can send plain messages too. In private chats the bot answers everything. In groups it only answers when it's @mentioned or when you reply to one of its messages. A rule-based parser (`cryptospeed/nlu.py`: keywords, regexes and difflib typo correction; no LLM or API key) understands things like:
-- “btc fees”, “how much to send bitcoin?”, “bitcon fess?”, “gas price”, “is the network busy”
-- “price of sol and doge”, “whats the prise of etherium”, “price of near and bonk” (unknown coins are resolved through CoinGecko search, cached for 24 h)
-- “how do I send eth faster?”, “how long does a litecoin transfer take”, “send on arbitrum or base?”
-- “my tx is stuck”, “speed up my btc transaction”, “transfer taking forever”
-- a pasted BTC txid (64 hex) or ETH tx hash (0x + 64 hex): live status via mempool.space or ETH RPC (`eth_getTransactionReceipt` + `eth_blockNumber`), giving confirmations, or for pending txs the fee rate vs. current fees plus unstick tips
-- “tell me when eth gas under 1”, “alert me if btc fees drop below 3”, “show my alerts”, “clear my alerts”
-- hi / thanks / help; seed-phrase or custody questions get a safety warning; anything else gets a list of example questions
+### How wallet watching works
 
-### Own-wallet watching (public addresses only)
-The bot watches only public addresses that **you** add, either with `/addwallet` or by saying “watch my wallet <address> as savings”, “track this address <address>”, “list my wallets” or “stop watching savings”. It never asks for, stores or uses private keys or seed phrases; anything shaped like a WIF key or xprv gets a safety warning instead. It can't move funds and never looks up other people's wallets.
-
-- Addresses are validated locally (base58check and bech32/bech32m checksums for BTC, 0x + 40 hex for ETH) and stored per chat in sqlite (`wallets` table).
-- When you add an address, the bot snapshots its current balance and recent txs **without alerting**, so you don't get a dump of history.
+- Addresses are validated locally (base58check and bech32/bech32m checksums for BTC, 0x + 40 hex for ETH) and stored per chat in sqlite.
+- Adding an address snapshots its current balance and recent txs **without alerting**, so you don't get a dump of history.
 - A job runs every `WALLET_POLL_SECONDS` (default 75 s):
-  - **BTC:** `https://mempool.space/api/address/<a>` (balance) and `/api/address/<a>/txs` (recent txs, mempool first). A new incoming tx is reported right away as unconfirmed, then once more when it confirms.
-  - **ETH:** public RPC `eth_getBalance` plus Blockscout's free, keyless `https://eth.blockscout.com/api/v2/addresses/<a>/transactions?filter=to` for sender and tx hash. Etherscan v2 needs an API key, so it isn't used. If Blockscout is down, or the balance rises with no plain transfer (internal or contract transfer), you get a "balance increased by X ETH" alert. ERC-20 token transfers aren't tracked yet.
+  - **BTC:** mempool.space address balance + recent txs. A new incoming tx is reported right away as unconfirmed, then once more when it confirms.
+  - **ETH:** public RPC `eth_getBalance` plus Blockscout's free, keyless transactions API for sender and tx hash. If Blockscout is down, or the balance rises with no plain transfer (internal or contract transfer), you get a "balance increased by X ETH" alert. ERC-20 token transfers aren't tracked yet.
 - Alerts go to the chat that registered the address and include the amount (≈ USD), sender, status, explorer link and new balance.
 
-Alerts are stored in a small sqlite file (`alerts.db`). They're checked every `ALERT_POLL_SECONDS` (default 180), fire once, then get removed. Max 10 per chat.
+Fee alerts live in a small sqlite file (`alerts.db`), are checked every `ALERT_POLL_SECONDS` (default 180 s), fire once, then get removed. Max 10 per chat.
 
 ## Data sources (all free, no API key)
+
 - Bitcoin fees: `https://mempool.space/api/v1/fees/recommended`
-- Ethereum gas: `eth_feeHistory` (last 10 blocks, 25th/50th percentile tips) on public RPCs, tried in this order: `ethereum-rpc.publicnode.com`, `eth.drpc.org`, `rpc.flashbots.net`, `rpc.mevblocker.io`. `eth_maxPriorityFeePerGas` isn't used because several public RPCs return 0 for it.
-- Prices: CoinGecko `simple/price` (cached for 60 s because the free tier rate-limits), with Coinbase `v2/prices/<SYM>-USD/spot` as the fallback.
+- Ethereum gas: `eth_feeHistory` (last 10 blocks, 25th/50th percentile tips) on public RPCs, tried in order: `ethereum-rpc.publicnode.com`, `eth.drpc.org`, `rpc.flashbots.net`, `rpc.mevblocker.io`
+- Prices: CoinGecko `simple/price` (cached 60 s), with Coinbase `v2/prices/<SYM>-USD/spot` as fallback
+- Tx lookups: mempool.space (BTC), `eth_getTransactionReceipt` + `eth_blockNumber` on public RPCs (ETH)
 
-If a source fails, the user gets a friendly "try again" message. The bot never makes up numbers.
+## Self-hosting
 
-## Setup
+The hosted bot at [@Simple1990bot](https://t.me/Simple1990bot) is free to use; run your own copy like this:
+
 1. In Telegram, open **@BotFather**, send `/newbot`, pick a name and username, and copy the token.
    Optional: use `/setcommands` to register the command list above.
 2. Install (Python 3.10+):
+
    ```bash
-   cd cryptospeed-bot
+   git clone https://github.com/fitzyracing1/cryptospeed-bot.git && cd cryptospeed-bot
    python3 -m venv .venv
    .venv/bin/pip install -r requirements.txt
    ```
+
 3. Run:
+
    ```bash
    export TELEGRAM_BOT_TOKEN="123456:ABC..."
    .venv/bin/python -m cryptospeed            # optional: --db /path/alerts.db
    ```
-   The bot uses long polling, so you don't need a public URL or webhook. httpx/telegram loggers are kept at WARNING so request URLs, which contain the token, never reach the log.
+
+   The bot uses long polling, so no public URL or webhook is needed. httpx/telegram loggers are kept at WARNING so request URLs, which contain the token, never reach the log. Keep your token out of git — `.telegram_token` and `*.db` are already gitignored.
 
 ## Testing
+
 ```bash
 # Live check of every data fetcher against the real APIs (no Telegram token needed):
 .venv/bin/python -m cryptospeed --selftest
@@ -76,10 +97,11 @@ If a source fails, the user gets a friendly "try again" message. The bot never m
 ```
 
 ## Layout
+
 ```
 cryptospeed/
   __main__.py   entry point (run bot / --selftest)
-  bot.py        Telegram handlers, alert polling job
+  bot.py        Telegram handlers, alert + wallet polling jobs
   fetchers.py   live API calls (mempool.space, ETH RPCs, CoinGecko, Coinbase)
   formatting.py all user-facing text (pure functions)
   nlu.py        rule-based natural-language intent parser
