@@ -1,0 +1,115 @@
+2026-10-11 13:37:28,640 WARNING cryptospeed.fetchers: CoinGecko failed for definitely-not-a-coin-xyz: HTTPStatusError("Client error '429 Too Many Requests' for url 'https://api.coingecko.com/api/v3/simple/price?ids=definitely-not-a-coin-xyz&vs_currencies=usd&include_24hr_change=true'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429")
+
+=== BTC fees (mempool.space): OK ===
+₿ Bitcoin fees (mempool.space)
+🚀 Next block (~10 min): 1 sat/vB
+⏱ ~30 min: 1 sat/vB
+🕐 ~1 hour: 1 sat/vB
+🐢 Economy: 1 sat/vB · Minimum: 1 sat/vB
+
+A typical 1-input/2-output SegWit tx is ~141 vB → next-block ≈ 141 sats.
+Fetched 17:37 UTC. Estimates, not guarantees.
+raw: BtcFees(fastest=1.0, half_hour=1.0, hour=1.0, economy=1.0, minimum=1.0, source='mempool.space', fetched_at=1791740245.4186525)
+
+=== ETH gas (public RPC + CoinGecko USD): OK ===
+Ξ Ethereum gas
+Base fee (next block): 0.296 gwei
+Priority fee (tip): 0.196 gwei typical · 0.043 gwei low
+Suggested total: 0.491 gwei
+Simple ETH transfer (21,000 gas) ≈ 0.00001032 ETH
+≈ $0.026 at ETH = $2,545.09
+Token transfers/swaps use more gas (≈65k for an ERC-20 transfer, 100k+ for swaps).
+Tip: set max fee ≈ 2× base fee + tip so a base-fee rise doesn't strand your tx; you only pay what's used.
+Source: ethereum-rpc.publicnode.com (eth_feeHistory, last 10 blocks). Fetched 17:37 UTC.
+raw: EthGas(base_fee_gwei=0.29578032, priority_fee_gwei=0.195638805, low_priority_fee_gwei=0.043224254, source='ethereum-rpc.publicnode.com (eth_feeHistory, last 10 blocks)', eth_usd=2545.09, fetched_at=1791740245.6454315)
+   RPC https://ethereum-rpc.publicnode.com: OK base=0.2936 gwei tip=0.1951 gwei
+   RPC https://eth.drpc.org: OK base=0.2958 gwei tip=0.1956 gwei
+   RPC https://rpc.flashbots.net: OK base=0.2936 gwei tip=0.1951 gwei
+   RPC https://rpc.mevblocker.io: OK base=0.2936 gwei tip=0.1951 gwei
+
+=== Price btc (CoinGecko): OK ===
+💲 bitcoin: $83,935.00  📈 +1.09% (24h)
+Source: CoinGecko. Fetched 17:37 UTC.
+raw: Price(coin_id='bitcoin', usd=83935.0, change_24h=1.0949789152192624, source='CoinGecko', fetched_at=1791740246.840075)
+
+=== Price eth (CoinGecko): OK ===
+💲 ethereum: $2,545.09  📈 +1.56% (24h)
+Source: CoinGecko. Fetched 17:37 UTC.
+raw: Price(coin_id='ethereum', usd=2545.09, change_24h=1.5623363573700988, source='CoinGecko', fetched_at=1791740245.7921782)
+
+=== Price sol (CoinGecko): OK ===
+💲 solana: $112.42  📈 +2.24% (24h)
+Source: CoinGecko. Fetched 17:37 UTC.
+raw: Price(coin_id='solana', usd=112.42, change_24h=2.235829241963239, source='CoinGecko', fetched_at=1791740246.854916)
+
+=== Price ltc (CoinGecko): OK ===
+💲 litecoin: $64.68  📈 +0.89% (24h)
+Source: CoinGecko. Fetched 17:37 UTC.
+raw: Price(coin_id='litecoin', usd=64.68, change_24h=0.894516313950072, source='CoinGecko', fetched_at=1791740246.870215)
+
+=== Batch price sol+doge+xrp (CoinGecko, 1 request): OK ===
+💲 solana: $112.42  📈 +2.24% (24h)
+💲 dogecoin: $0.087  📈 +1.48% (24h)
+💲 ripple: $1.42  📈 +1.27% (24h)
+Source: CoinGecko. Fetched 17:37 UTC.
+raw: [Price(coin_id='solana', usd=112.42, change_24h=2.235829241963239, source='CoinGecko', fetched_at=1791740246.854916), Price(coin_id='dogecoin', usd=0.087389, change_24h=1.4820736258924287, source='CoinGecko', fetched_at=1791740246.8847632), Price(coin_id='ripple', usd=1.42, change_24h=1.2716613247290582, source='CoinGecko', fetched_at=1791740246.8847659)]
+
+=== Coin search near/bonk (CoinGecko /search): OK ===
+near -> ('near', 'NEAR', 'NEAR Protocol')
+bonk -> ('bonk', 'BONK', 'Bonk')
+raw: [('near', 'NEAR', 'NEAR Protocol'), ('bonk', 'BONK', 'Bonk')]
+
+=== BTC tx lookup, confirmed (mempool.space): OK ===
+✅ Bitcoin tx 01990daad8…ec5570 is confirmed — 1 confirmation(s) (block 970963).
+https://mempool.space/tx/01990daad81a3620fa43b8f69756bedb789dcba27648b730dd65d600d0ec5570
+raw: TxStatus(chain='btc', txid='01990daad81a3620fa43b8f69756bedb789dcba27648b730dd65d600d0ec5570', found=True, confirmed=True, confirmations=1, block_height=970963, fee_rate=8.279260780287474, eth_success=None, eth_max_fee_gwei=None, eth_tip_gwei=None, current_fast=None, source='mempool.space')
+
+=== BTC tx lookup, mempool (mempool.space): OK ===
+⏳ Bitcoin tx 7d6dcf2787…3ce81c is pending (in the mempool, not yet in a block).
+Its fee rate: 2.07 sat/vB
+Current next-block fee: 1 sat/vB
+Its fee is at or above the next-block rate, so it should confirm in the next block or two (blocks average ~10 min but vary).
+https://mempool.space/tx/7d6dcf2787596365dc9f5d62566e5cf326bc86605769a860ae2bf1da793ce81c
+raw: TxStatus(chain='btc', txid='7d6dcf2787596365dc9f5d62566e5cf326bc86605769a860ae2bf1da793ce81c', found=True, confirmed=False, confirmations=0, block_height=None, fee_rate=2.074688796680498, eth_success=None, eth_max_fee_gwei=None, eth_tip_gwei=None, current_fast=1.0, source='mempool.space')
+
+=== ETH tx lookup (public RPC receipt + blockNumber): OK ===
+✅ Ethereum tx 0xe0304a79…a34701 is included in block 26170746 — 4 confirmation(s); execution succeeded.
+https://etherscan.io/tx/0xe0304a79710314f4a396550d65faaa67b62dfcde7a1cd380e4bde89cdea34701
+raw: TxStatus(chain='eth', txid='0xe0304a79710314f4a396550d65faaa67b62dfcde7a1cd380e4bde89cdea34701', found=True, confirmed=True, confirmations=4, block_height=26170746, fee_rate=None, eth_success=True, eth_max_fee_gwei=None, eth_tip_gwei=None, current_fast=None, source='ethereum-rpc.publicnode.com (Ethereum mainnet)')
+
+=== ETH tx lookup, nonexistent hash -> friendly not-found: OK ===
+🔎 Ethereum tx 0xabababab…ababab wasn't found on Ethereum mainnet. It may have been dropped/replaced, or it was sent on an L2 or other EVM chain (Arbitrum, Base, Optimism, BNB…) — check that chain's explorer.
+raw: TxStatus(chain='eth', txid='0xabababababababababababababababababababababababababababababababab', found=False, confirmed=False, confirmations=0, block_height=None, fee_rate=None, eth_success=None, eth_max_fee_gwei=None, eth_tip_gwei=None, current_fast=None, source='ethereum-rpc.publicnode.com (Ethereum mainnet)')
+
+   Coinbase fallback BTC-USD: OK 84070.225
+   unknown-coin handling: OK -> friendly message: Couldn't fetch a price for 'definitely-not-a-coin-xyz' right now (CoinGecko may be rate-limiting). Please try again soon.
+
+=== Wallet watch BTC genesis address (mempool.space address + txs): OK ===
+1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa: balance 57.5845214 BTC, unconfirmed 0.00004218 BTC
+recent txs seen: 50 (incoming: 50), tx history source ok: True, source: mempool.space
+first-registration alerts (should be 0 balance-delta): 0
+latest: f751c3e3d1e369306704aa90c101eff11deb41a4c132ce36eeac88c2d367f058 amount_in=546 from=bc1p567vvhxrpe28ppdazajpjsgng22sunxlrk0dn3rfuechf2mx828qns8zks
+raw: Snapshot(chain='btc', address='1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', balance=5758452140, pending=4218, txs=[{'txid': 'f751c3e3d1e369306704aa90c101eff11deb41a4c132ce36eeac88c2d367f058', 'confirmed': False, 'block': None, 'amount_in': 546, 'from': 'bc1p567vvhxrpe28ppdazajpjsgng22sunxlrk0dn3rfuechf2mx828qns8zks'}, {'txid': 'c99e446ab2d43e999de5708e62a8384f187f8015cc6d188af2a23e8d313b39a4', 'confirmed'…
+
+=== Wallet watch ETH deposit contract (RPC eth_getBalance + Blockscout history): OK ===
+0x00000000219ab540356cbb839cbe05303d7705fa: balance 91,942,526.749112 ETH
+recent txs seen: 50 (incoming: 50), tx history source ok: True, source: ethereum-rpc.publicnode.com + eth.blockscout.com
+first-registration alerts (should be 0 balance-delta): 0
+latest: 0xcd9176c5c1337f6195e55c952c0511ba56655cfced8f040f38a52fe6627cd217 amount_in=77000000000000000000 from=0x626e8BEB992Ad1C16B2d0DF6476Ad82AD0353087
+raw: Snapshot(chain='eth', address='0x00000000219ab540356cbb839cbe05303d7705fa', balance=91942526749112300334996918, pending=None, txs=[{'txid': '0xcd9176c5c1337f6195e55c952c0511ba56655cfced8f040f38a52fe6627cd217', 'confirmed': True, 'block': 26170502, 'amount_in': 77000000000000000000, 'from': '0x626e8BEB992Ad1C16B2d0DF6476Ad82AD0353087'}, {'txid': '0x239e2a0239577f248fc2c2527f38da153ded1fd69a5318250f…
+
+SUMMARY: 14/14 live fetchers returned real data
+  [PASS] BTC fees (mempool.space)
+  [PASS] ETH gas (public RPC + CoinGecko USD)
+  [PASS] Price btc (CoinGecko)
+  [PASS] Price eth (CoinGecko)
+  [PASS] Price sol (CoinGecko)
+  [PASS] Price ltc (CoinGecko)
+  [PASS] Batch price sol+doge+xrp (CoinGecko, 1 request)
+  [PASS] Coin search near/bonk (CoinGecko /search)
+  [PASS] BTC tx lookup, confirmed (mempool.space)
+  [PASS] BTC tx lookup, mempool (mempool.space)
+  [PASS] ETH tx lookup (public RPC receipt + blockNumber)
+  [PASS] ETH tx lookup, nonexistent hash -> friendly not-found
+  [PASS] Wallet watch BTC genesis address (mempool.space address + txs)
+  [PASS] Wallet watch ETH deposit contract (RPC eth_getBalance + Blockscout history)
