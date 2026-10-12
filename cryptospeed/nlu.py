@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from .addresses import find_addresses, looks_like_private_key
+from .swaps import ALL_SWAP_WORDS
 
 # ---------------------------------------------------------------- coin vocabulary
 # word -> CoinGecko id. Ambiguous English words (op, near, one, link, ton, gas, sand...) are deliberately NOT here;
@@ -80,6 +81,66 @@ STOPWORDS = (COMMON - {"near", "base"}) | {
 GREETING = {"hi", "hello", "hey", "heya", "hiya", "yo", "sup", "gm", "howdy", "hola", "morning", "evening", "greetings"}
 THANKS = {"thanks", "thank", "thx", "thnx", "thanx", "tnx", "ty", "tysm", "cheers", "appreciate", "appreciated"}
 
+# ---------------------------------------------------------------- swap quotes (read-only)
+_SWAP_TOK = r"(?:%s)" % "|".join(sorted(ALL_SWAP_WORDS, key=len, reverse=True))
+_SWAP_AMT = r"\d+(?:\.\d+)?"
+_SWAP_SEP = r"(?:\s+(?:to|for|into)\s+|\s*(?:->|/)\s*)"
+SWAP_VERB_RE = re.compile(
+    rf"\b(?:swap|swapping|swaping|convert|converting|trade|trading|exchange|exchanging)\s+"
+    rf"(?:my\s+|all\s+)?(?:({_SWAP_AMT})\s*)?({_SWAP_TOK})\b{_SWAP_SEP}({_SWAP_TOK})\b")
+SWAP_PAIR_AMT_RE = re.compile(rf"\b({_SWAP_AMT})\s*({_SWAP_TOK})\b{_SWAP_SEP}({_SWAP_TOK})\b")
+SWAP_HOWMUCH_RE = re.compile(
+    rf"\bhow (?:much|many)\s+({_SWAP_TOK})\s+(?:for|per)\s+(?:({_SWAP_AMT})\s*)?({_SWAP_TOK})\b")
+SWAP_RATE_PAIR_RE = re.compile(rf"\b({_SWAP_TOK})\b{_SWAP_SEP}({_SWAP_TOK})\b")
+SWAP_RATE_WORD_RE = re.compile(r"\b(?:rate|rates|quote|quotes|swap|convert|exchange|price)\b")
+SWAP_CHAIN_RE = re.compile(r"\b(?:on|via|using)\s+(ethereum|mainnet|l1|base|arbitrum|arb|solana|sol)\b")
+SWAP_ALERT_WORD_RE = re.compile(r"\b(?:alert|notify|notification|remind|ping|tell me|let me know|message me|warn me)\b")
+SWAP_ALERT_GETS_RE = re.compile(
+    rf"\b(?:({_SWAP_AMT})\s*)?({_SWAP_TOK})\s+(?:gets?|buys?|is worth|fetches|hits?|reaches)\s+({_SWAP_AMT})\s*({_SWAP_TOK})\b")
+SWAP_ALERT_PAIR_RE = re.compile(
+    rf"\b({_SWAP_TOK})\s*(?:/|->|\s+to\s+|\s+vs\s+)\s*({_SWAP_TOK})\b\D{{0,40}}?({_SWAP_AMT})")
+
+
+def _swap_norm(text: str) -> str:
+    t = text.lower().replace("→", "->").replace("’", "'")
+    t = re.sub(r"(\d),(\d{3})\b", r"\1\2", t)      # 1,000 -> 1000
+    t = re.sub(r"(\d),(\d{1,2})\b", r"\1.\2", t)   # 0,5 -> 0.5
+    return t
+
+
+def _swap_intent(text: str) -> Optional[Intent]:
+    t = _swap_norm(text)
+    chain_m = SWAP_CHAIN_RE.search(t)
+    chain = chain_m.group(1) if chain_m else None
+    if SWAP_ALERT_WORD_RE.search(t):
+        m = SWAP_ALERT_GETS_RE.search(t)
+        if m and m.group(2) != m.group(4):
+            amount = float(m.group(1)) if m.group(1) else 1.0
+            return Intent("swap_alert", swap_amount=amount, swap_from=m.group(2), swap_to=m.group(4),
+                          swap_chain=chain, threshold=float(m.group(3)))
+        m = SWAP_ALERT_PAIR_RE.search(t)
+        if m and m.group(1) != m.group(2):
+            return Intent("swap_alert", swap_amount=1.0, swap_from=m.group(1), swap_to=m.group(2),
+                          swap_chain=chain, threshold=float(m.group(3)))
+        return None  # alert wording without a token pair -> fee-alert logic handles it
+    m = SWAP_VERB_RE.search(t)
+    if m and m.group(2) != m.group(3):
+        return Intent("swap", swap_amount=float(m.group(1)) if m.group(1) else 1.0,
+                      swap_from=m.group(2), swap_to=m.group(3), swap_chain=chain)
+    m = SWAP_PAIR_AMT_RE.search(t)
+    if m and m.group(2) != m.group(3):
+        return Intent("swap", swap_amount=float(m.group(1)), swap_from=m.group(2), swap_to=m.group(3),
+                      swap_chain=chain)
+    m = SWAP_HOWMUCH_RE.search(t)
+    if m and m.group(1) != m.group(3):
+        return Intent("swap", swap_amount=float(m.group(2)) if m.group(2) else 1.0,
+                      swap_from=m.group(3), swap_to=m.group(1), swap_chain=chain)
+    m = SWAP_RATE_PAIR_RE.search(t)
+    if m and m.group(1) != m.group(2) and SWAP_RATE_WORD_RE.search(t):
+        return Intent("swap", swap_amount=1.0, swap_from=m.group(1), swap_to=m.group(2), swap_chain=chain)
+    return None
+
+
 BTC_TXID_RE = re.compile(r"(?<![0-9a-fA-Fx])([0-9a-fA-F]{64})(?![0-9a-fA-F])")
 ETH_TX_RE = re.compile(r"\b(0x[0-9a-fA-F]{64})(?![0-9a-fA-F])")
 NUM_RE = re.compile(r"(?<![\w.])(\d+(?:[.,]\d+)?)(?![\w.])|(?<![\w.])(\.\d+)(?![\w.])")
@@ -98,6 +159,10 @@ class Intent:
     label: Optional[str] = None       # wallet watching: optional label
     target: Optional[str] = None      # remove_wallet: id / label / address
     error: Optional[str] = None       # user-facing hint when an intent is recognised but incomplete
+    swap_amount: Optional[float] = None   # swap / swap_alert: amount of the from-token
+    swap_from: Optional[str] = None       # swap / swap_alert: from-token word as typed
+    swap_to: Optional[str] = None         # swap / swap_alert: to-token word
+    swap_chain: Optional[str] = None      # swap / swap_alert: chain word ("base", "solana", ...) or None
 
 
 def _tokenize(text: str) -> list[str]:
@@ -191,6 +256,11 @@ def parse(text: str, bot_username: Optional[str] = None) -> Intent:
                r"\bsend (you|it to you)\b", r"\b(can|will) you (send|transfer|hold|accelerate it for)\b",
                r"\b12 words\b", r"\b24 words\b"):
         return Intent("safety")
+
+    # 1b) swap quotes / swap-rate alerts (read-only) — before fee/price intents, which share keywords
+    sw = _swap_intent(text)
+    if sw:
+        return sw
 
     toks = [_correct(t) for t in raw_toks]
     ts = set(toks)

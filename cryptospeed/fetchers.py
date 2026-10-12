@@ -16,7 +16,7 @@ import httpx
 
 log = logging.getLogger(__name__)
 
-USER_AGENT = "cryptospeed-bot/0.1 (+non-custodial fee helper)"
+USER_AGENT = "cryptospeed-bot/0.2 (+non-custodial fee helper)"
 TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 
 MEMPOOL_FEES_URL = "https://mempool.space/api/v1/fees/recommended"
@@ -168,6 +168,23 @@ async def fetch_eth_gas(client: httpx.AsyncClient, with_usd: bool = True) -> Eth
         except FetchError:
             gas.eth_usd = None  # USD estimate is optional
     return gas
+
+
+async def fetch_eth_base_fee_history(client: httpx.AsyncClient, blocks: int = 600) -> list[float]:
+    """Base fees (gwei) of the last `blocks` blocks (~2 h for 600), oldest first. Used to judge
+    whether the current base fee is cheap or expensive relative to the recent past."""
+    last: Exception | None = None
+    for url in ETH_RPC_URLS:
+        try:
+            hist = await _rpc(client, url, "eth_feeHistory", [hex(blocks), "latest", []])
+            fees = [int(x, 16) / 1e9 for x in hist["baseFeePerGas"]]
+            if len(fees) < 10:
+                raise RuntimeError("feeHistory returned too few blocks")
+            return fees
+        except Exception as e:  # noqa: BLE001
+            log.warning("ETH feeHistory via %s failed: %r", url, e)
+            last = e
+    raise FetchError("Couldn't fetch recent Ethereum base-fee history right now.") from last
 
 
 # ---------------------------------------------------------------- Prices
