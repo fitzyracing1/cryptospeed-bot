@@ -111,3 +111,8 @@ cryptospeed/
   selftest.py   live self-test
 tests/test_formatting.py, tests/test_nlu.py, tests/test_wallets.py
 ```
+
+## Documentation
+
+- In-repo docs: [docs/](docs/index.md)
+- Wiki: [https://github.com/fitzyracing1/cryptospeed-bot/wiki](https://github.com/fitzyracing1/cryptospeed-bot/wiki)
