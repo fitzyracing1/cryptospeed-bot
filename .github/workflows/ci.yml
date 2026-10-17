@@ -1,0 +1,26 @@
+# Minimal CI added on the throwaway branch try/service-launch (commit-live service trial).
+name: CI
+
+on:
+  push:
+    branches: [main, 'try/**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: install
+        run: python -m pip install --upgrade pip && pip install -r requirements-dev.txt
+      - name: syntax check
+        run: python -m compileall -q .
+      - name: test
+        run: python -m pytest -q
